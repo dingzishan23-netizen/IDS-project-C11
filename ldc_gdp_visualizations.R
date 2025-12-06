@@ -17,14 +17,23 @@ gdp <- read_csv("gdp-per-capita-worldbank.csv")
 # Rename GDP column for easier handling
 colnames(gdp)[4] <- "GDP_per_capita"
 
-# Official UN LDC list (44 countries as of December 2024)
+# Official UN LDC list as of December 2024 (44 countries)
 ldc_codes <- c(
-  "AFG", "AGO", "BGD", "BEN", "BFA", "BDI", "KHM", "CAF", "TCD", "COM",
-  "COD", "DJI", "ERI", "ETH", "GMB", "GIN", "GNB", "HTI", "KIR", "LAO",
-  "LSO", "LBR", "MDG", "MWI", "MLI", "MRT", "MOZ", "MMR", "NPL", "NER",
-  "RWA", "STP", "SEN", "SLE", "SLB", "SOM", "SSD", "SDN", "TZA", "TLS",
-  "TGO", "TUV", "UGA", "YEM", "ZMB"
+  # Africa (32)
+  "AGO", "BEN", "BFA", "BDI", "CAF", "TCD", "COM", "COD", "DJI", "ERI",
+  "ETH", "GMB", "GIN", "GNB", "LSO", "LBR", "MDG", "MWI", "MLI", "MRT",
+  "MOZ", "NER", "RWA", "SEN", "SLE", "SOM", "SSD", "SDN", "TGO", "UGA",
+  "TZA", "ZMB",
+  # Asia (8)
+  "AFG", "BGD", "KHM", "LAO", "MMR", "NPL", "TLS", "YEM",
+  # Caribbean (1)
+  "HTI",
+  # Pacific (3)
+  "KIR", "SLB", "TUV"
 )
+
+# Verify count
+cat("Total LDCs in list:", length(ldc_codes), "\n")  # Should now show 44
 
 # Merge and prepare data
 gdp_analysis <- gdp %>%
