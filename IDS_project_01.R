@@ -46,9 +46,7 @@ clean_pop_by_age <- pop_by_age %>%
             .groups = "drop"
   ) %>%
   mutate(year = as.integer(year))
-View(clean_pop_by_age)
 
-View(continents)
 #combining dataset 
 base <- continents %>% select(country, iso3, continent)
 
@@ -61,6 +59,7 @@ panel <- gdp_pc2 %>%
   { if (!is.null(clean_pop_by_age)) left_join(., clean_pop_by_age %>% select(iso3, year, population_15_24), by = c("iso3","year")) else . } %>%
   filter(year >= 1990, year <= 2024) %>%
   arrange(country, year)
+
 
 # Country-level GDP per capita growth
 panel <- panel %>%
@@ -124,7 +123,14 @@ neet_cont_mean <- panel %>%
   )
 
 # Plots - Weighted 
-p_w_gdp <- ggplot(gpc_cont_weighted, aes(x = year, y = gdp_pc_growth_pct_weighted, color = continent)) +
+win_start <- 2015
+win_end   <- 2023
+gpc_w_15123 <- gpc_cont_weighted %>% filter(year >= win_start, year <= win_end)
+gpc_m_15123 <- gpc_cont_mean     %>% filter(year >= win_start, year <= win_end)
+neet_w_15123 <- neet_cont_weighted %>% filter(year >= win_start, year <= win_end)
+neet_m_15123 <- neet_cont_mean     %>% filter(year >= win_start, year <= win_end)
+
+p_w_gdp <- ggplot(gpc_w_15123, aes(x = year, y = gdp_pc_growth_pct_weighted, color = continent)) +
   geom_line(size = 1) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
   scale_y_continuous(labels = label_percent(scale = 1)) +
@@ -135,7 +141,7 @@ p_w_gdp <- ggplot(gpc_cont_weighted, aes(x = year, y = gdp_pc_growth_pct_weighte
   theme_minimal(base_size = 13)
 ggsave("output/figures/gdp_pc_growth_by_continent_weighted.png", p_w_gdp, width = 10, height = 6)
 
-p_w_neet <- ggplot(neet_cont_weighted, aes(x = year, y = neet_pct_weighted, color = continent)) +
+p_w_neet <- ggplot(neet_w_15123, aes(x = year, y = neet_pct_weighted, color = continent)) +
   geom_line(size = 1) +
   labs(
     title = "Weighted NEET (15–24) by Continent",
@@ -144,9 +150,8 @@ p_w_neet <- ggplot(neet_cont_weighted, aes(x = year, y = neet_pct_weighted, colo
   theme_minimal(base_size = 13)
 ggsave("output/figures/neet_by_continent_weighted.png", p_w_neet, width = 10, height = 6)
 
-
 # Plots — Simple means 
-p_m_gdp <- ggplot(gpc_cont_mean, aes(x = year, y = gdp_pc_growth_pct_mean, color = continent)) +
+p_m_gdp <- ggplot(gpc_m_15123, aes(x = year, y = gdp_pc_growth_pct_mean, color = continent)) +
   geom_line(size = 1) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
   scale_y_continuous(labels = label_percent(scale = 1)) +
@@ -157,7 +162,7 @@ p_m_gdp <- ggplot(gpc_cont_mean, aes(x = year, y = gdp_pc_growth_pct_mean, color
   theme_minimal(base_size = 13)
 ggsave("output/figures/gdp_pc_growth_by_continent_simple_mean.png", p_m_gdp, width = 10, height = 6)
 
-p_m_neet <- ggplot(neet_cont_mean, aes(x = year, y = neet_pct_mean, color = continent)) +
+p_m_neet <- ggplot(neet_m_15123, aes(x = year, y = neet_pct_mean, color = continent)) +
   geom_line(size = 1) +
   labs(
     title = "NEET (15–24) by Continent (Simple Average)",
@@ -165,7 +170,6 @@ p_m_neet <- ggplot(neet_cont_mean, aes(x = year, y = neet_pct_mean, color = cont
   ) +
   theme_minimal(base_size = 13)
 ggsave("output/figures/neet_by_continent_simple_mean.png", p_m_neet, width = 10, height = 6)
-
 
 # Check
 message("Weighted GDP rows: ", nrow(gpc_cont_weighted))
@@ -201,6 +205,7 @@ p_bar_w <- ggplot(neet_change_w, aes(x = continent, y = neet_change_pp_weighted,
   ) +
   theme_minimal(base_size = 13) +
   theme(legend.position = "none")
+p_bar_w
 ggsave("output/figures/neet_change_weighted_bar.png", p_bar_w, width = 9, height = 6)
 
 p_bar_m <- ggplot(neet_change_m, aes(x = continent, y = neet_change_pp_mean, fill = continent)) +
@@ -216,5 +221,3 @@ p_bar_m <- ggplot(neet_change_m, aes(x = continent, y = neet_change_pp_mean, fil
   theme(legend.position = "none")
 ggsave("output/figures/neet_change_simple_mean_bar.png", p_bar_m, width = 9, height = 6)
 
-p_bar_w
-p_bar_m
