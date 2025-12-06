@@ -17,7 +17,8 @@ gdp <- read_csv("gdp-per-capita-worldbank.csv")
 # Rename GDP column for easier handling
 colnames(gdp)[4] <- "GDP_per_capita"
 
-# Official UN LDC list as of December 2024 (44 countries)
+# Official UN LDC list (44 countries as of December 2024)
+# Corrected list - removed STP (graduated in 2024)
 ldc_codes <- c(
   # Africa (32)
   "AGO", "BEN", "BFA", "BDI", "CAF", "TCD", "COM", "COD", "DJI", "ERI",
@@ -31,9 +32,6 @@ ldc_codes <- c(
   # Pacific (3)
   "KIR", "SLB", "TUV"
 )
-
-# Verify count
-cat("Total LDCs in list:", length(ldc_codes), "\n")  # Should now show 44
 
 # Merge and prepare data
 gdp_analysis <- gdp %>%
@@ -142,7 +140,7 @@ continent_data_long <- achievement_by_continent %>%
   ) %>%
   mutate(
     Status = factor(Status, levels = c("Achieved", "Not_Achieved"),
-                   labels = c("Achieved 7%+", "Below 7%"))
+                    labels = c("Achieved 7%+", "Below 7%"))
   )
 
 plot2 <- ggplot(continent_data_long, aes(x = reorder(Continent, -Percent_Achieved), 
@@ -177,8 +175,10 @@ ggsave("plot2_achievement_by_continent.png", plot2, width = 12, height = 7, dpi 
 plot3 <- ggplot(gdp_cagr, aes(x = CAGR)) +
   geom_histogram(aes(fill = Achieved_Target), bins = 30, alpha = 0.8) +
   geom_vline(xintercept = 7, linetype = "dashed", color = "red", linewidth = 1.2) +
-  annotate("text", x = 7, y = Inf, label = "7% Target", 
-           vjust = 1.5, hjust = -0.1, color = "red", fontface = "bold", size = 4) +
+  annotate("text", x = 7, y = Inf, 
+           label = "7% Target\n(Red dashed line)", 
+           vjust = 1.2, hjust = 0.5, 
+           color = "red", fontface = "bold", size = 3.5) +
   scale_fill_manual(
     values = c("TRUE" = "#2ecc71", "FALSE" = "#e74c3c"),
     labels = c("TRUE" = "Achieved", "FALSE" = "Not Achieved")
@@ -188,8 +188,7 @@ plot3 <- ggplot(gdp_cagr, aes(x = CAGR)) +
     subtitle = "Compound Annual Growth Rate (CAGR) 2015-2023",
     x = "GDP Growth Rate (%)",
     y = "Number of LDCs",
-    fill = "Target Achievement",
-    caption = "Red dashed line indicates 7% target"
+    fill = "Target Achievement"
   ) +
   theme_minimal(base_size = 14) +
   theme(
@@ -201,21 +200,42 @@ print(plot3)
 ggsave("plot3_growth_distribution.png", plot3, width = 10, height = 6, dpi = 300)
 
 # ============================================================================
-# 5. VISUALIZATION 4: INDIVIDUAL LDC PERFORMANCE
+# 5. VISUALIZATION 4: INDIVIDUAL LDC PERFORMANCE (FIXED)
 # ============================================================================
 
-# Show top 10 and bottom 10 performers
+# Create top/bottom data with CORRECT ordering
 top_bottom_ldcs <- bind_rows(
   gdp_cagr %>% arrange(desc(CAGR)) %>% head(10) %>% mutate(Group = "Top 10"),
   gdp_cagr %>% arrange(CAGR) %>% head(10) %>% mutate(Group = "Bottom 10")
 ) %>%
   mutate(
-    Entity = factor(Entity, levels = Entity[order(CAGR)])
+    Entity = factor(Entity, levels = Entity[order(CAGR)]),
+    Group = factor(Group, levels = c("Top 10", "Bottom 10"))  # Top 10 first
   )
+
+# Red line data - only for Top 10
+vline_data <- data.frame(
+  xintercept = 7,
+  Group = factor("Top 10", levels = c("Top 10", "Bottom 10"))
+)
+
+# Label data - positioned in the middle of Top 10 panel
+label_data <- data.frame(
+  CAGR = 7,  # At the line
+  Entity = "Guinea",  # Middle of Top 10 panel
+  Group = factor("Top 10", levels = c("Top 10", "Bottom 10")),
+  label = "7% Target"
+)
 
 plot4 <- ggplot(top_bottom_ldcs, aes(x = CAGR, y = Entity, fill = Achieved_Target)) +
   geom_col() +
-  geom_vline(xintercept = 7, linetype = "dashed", color = "red", linewidth = 1) +
+  geom_vline(data = vline_data, aes(xintercept = xintercept), 
+             linetype = "dashed", color = "red", linewidth = 0.7) +
+  geom_text(data = label_data, 
+            aes(x = CAGR, y = Entity, label = label),
+            vjust = 1.5, hjust = 0.5,
+            color = "red", fontface = "bold", size = 3.5,
+            inherit.aes = FALSE) +
   scale_fill_manual(
     values = c("TRUE" = "#2ecc71", "FALSE" = "#e74c3c"),
     labels = c("TRUE" = "Achieved", "FALSE" = "Not Achieved")
@@ -226,8 +246,7 @@ plot4 <- ggplot(top_bottom_ldcs, aes(x = CAGR, y = Entity, fill = Achieved_Targe
     subtitle = "GDP Growth Rate (CAGR) 2015-2023",
     x = "Compound Annual Growth Rate (%)",
     y = NULL,
-    fill = "Target Achievement",
-    caption = "Red line indicates 7% target"
+    fill = "Target Achievement"
   ) +
   theme_minimal(base_size = 12) +
   theme(
@@ -359,9 +378,9 @@ summary_table <- gdp_cagr %>%
     Max_Growth_Rate = round(max(CAGR, na.rm = TRUE), 2)
   )
 
-cat("\n" , "="*80, "\n")
+cat("\n", strrep("=", 80), "\n")
 cat("SUMMARY: LDC ACHIEVEMENT OF 7% GDP GROWTH TARGET (2015-2023)\n")
-cat("="*80, "\n\n")
+cat(strrep("=", 80), "\n\n")
 cat("Total LDCs with sufficient data:", summary_table$Total_LDCs_Analyzed, "\n")
 cat("LDCs achieving 7%+ growth:", summary_table$Achieved_7_Percent, 
     sprintf("(%.1f%%)\n", summary_table$Percent_Achieved))
@@ -383,7 +402,7 @@ if (summary_table$Mean_Growth_Rate >= 7) {
   cat("✗ Average growth rate BELOW the 7% target (gap of", 
       round(7 - summary_table$Mean_Growth_Rate, 2), "percentage points)\n")
 }
-cat("="*80, "\n\n")
+cat(strrep("=", 80), "\n\n")
 
 # ============================================================================
 # 10. EXPORT SUMMARY DATA
