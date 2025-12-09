@@ -8,7 +8,7 @@ library(scales)
 
 # Load datasets
 continents <- read_csv("continents-according-to-our-world-in-data.csv")
-gdp <- read_csv("gdp-per-capita-worldbank.csv")
+gdp <- read_csv("GDP-per-capita-worldbank.csv")
 colnames(gdp)[4] <- "GDP_per_capita"
 
 # ============================================================================
