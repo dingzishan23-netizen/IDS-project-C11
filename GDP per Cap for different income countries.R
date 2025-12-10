@@ -1,3 +1,5 @@
+# Ignore File - Unnecessary information
+
 library(tidyverse)
 
 # Load dataset
