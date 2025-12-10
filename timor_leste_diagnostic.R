@@ -9,7 +9,7 @@ library(scales)
 # Load datasets
 continents <- read_csv("continents-according-to-our-world-in-data.csv")
 gdp <- read_csv("GDP-per-capita-worldbank.csv")
-colnames(gdp)[4] <- "GDP_per_capita"
+colnames(gdp)[4] <- "gdp_per_capita"
 
 # ============================================================================
 # 1. EXTRACT TIMOR-LESTE DATA
