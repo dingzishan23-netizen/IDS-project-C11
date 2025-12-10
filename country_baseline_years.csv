@@ -1,0 +1,195 @@
+Entity,Code,Continent,Baseline_Year
+Algeria,DZA,Africa,1990
+Angola,AGO,Africa,1990
+Benin,BEN,Africa,1990
+Botswana,BWA,Africa,1990
+Burkina Faso,BFA,Africa,1990
+Burundi,BDI,Africa,1990
+Cameroon,CMR,Africa,1990
+Cape Verde,CPV,Africa,1990
+Central African Republic,CAF,Africa,1990
+Chad,TCD,Africa,1990
+Comoros,COM,Africa,1990
+Congo,COG,Africa,1990
+Cote d'Ivoire,CIV,Africa,1990
+Democratic Republic of Congo,COD,Africa,1990
+Djibouti,DJI,Africa,2013
+Egypt,EGY,Africa,1990
+Equatorial Guinea,GNQ,Africa,1990
+Eswatini,SWZ,Africa,1990
+Ethiopia,ETH,Africa,1990
+Gabon,GAB,Africa,1990
+Gambia,GMB,Africa,1990
+Ghana,GHA,Africa,1990
+Guinea,GIN,Africa,1990
+Guinea-Bissau,GNB,Africa,1990
+Kenya,KEN,Africa,1990
+Lesotho,LSO,Africa,1990
+Liberia,LBR,Africa,2000
+Libya,LBY,Africa,1999
+Madagascar,MDG,Africa,1990
+Malawi,MWI,Africa,1990
+Mali,MLI,Africa,1990
+Mauritania,MRT,Africa,1990
+Mauritius,MUS,Africa,1990
+Morocco,MAR,Africa,1990
+Mozambique,MOZ,Africa,1990
+Namibia,NAM,Africa,1990
+Niger,NER,Africa,1990
+Nigeria,NGA,Africa,1990
+Rwanda,RWA,Africa,1990
+Sao Tome and Principe,STP,Africa,2001
+Senegal,SEN,Africa,1990
+Seychelles,SYC,Africa,1990
+Sierra Leone,SLE,Africa,1990
+Somalia,SOM,Africa,2013
+South Africa,ZAF,Africa,1990
+Sudan,SDN,Africa,1990
+Tanzania,TZA,Africa,1990
+Togo,TGO,Africa,1990
+Tunisia,TUN,Africa,1990
+Uganda,UGA,Africa,1990
+Zambia,ZMB,Africa,1990
+Zimbabwe,ZWE,Africa,1990
+Afghanistan,AFG,Asia,2002
+Armenia,ARM,Asia,1990
+Azerbaijan,AZE,Asia,1990
+Bahrain,BHR,Asia,1990
+Bangladesh,BGD,Asia,1990
+Bhutan,BTN,Asia,1990
+Brunei,BRN,Asia,1990
+Cambodia,KHM,Asia,1993
+China,CHN,Asia,1990
+East Timor,TLS,Asia,2000
+Georgia,GEO,Asia,1990
+Hong Kong,HKG,Asia,1990
+India,IND,Asia,1990
+Indonesia,IDN,Asia,1990
+Iran,IRN,Asia,1990
+Iraq,IRQ,Asia,1990
+Israel,ISR,Asia,1995
+Japan,JPN,Asia,1990
+Jordan,JOR,Asia,1990
+Kazakhstan,KAZ,Asia,1990
+Kuwait,KWT,Asia,1992
+Kyrgyzstan,KGZ,Asia,1990
+Laos,LAO,Asia,1990
+Lebanon,LBN,Asia,1990
+Macao,MAC,Asia,1990
+Malaysia,MYS,Asia,1990
+Maldives,MDV,Asia,1995
+Mongolia,MNG,Asia,1990
+Myanmar,MMR,Asia,1990
+Nepal,NPL,Asia,1990
+Oman,OMN,Asia,1990
+Pakistan,PAK,Asia,1990
+Palestine,PSE,Asia,1994
+Philippines,PHL,Asia,1990
+Qatar,QAT,Asia,2000
+Saudi Arabia,SAU,Asia,1990
+Singapore,SGP,Asia,1990
+South Korea,KOR,Asia,1990
+Sri Lanka,LKA,Asia,1990
+Tajikistan,TJK,Asia,1990
+Thailand,THA,Asia,1990
+Turkey,TUR,Asia,1990
+Turkmenistan,TKM,Asia,1990
+United Arab Emirates,ARE,Asia,1990
+Uzbekistan,UZB,Asia,1990
+Vietnam,VNM,Asia,1990
+Albania,ALB,Europe,1990
+Austria,AUT,Europe,1990
+Belarus,BLR,Europe,1990
+Belgium,BEL,Europe,1990
+Bosnia and Herzegovina,BIH,Europe,1994
+Bulgaria,BGR,Europe,1990
+Croatia,HRV,Europe,1995
+Cyprus,CYP,Europe,1990
+Czechia,CZE,Europe,1990
+Denmark,DNK,Europe,1990
+Estonia,EST,Europe,1995
+Finland,FIN,Europe,1990
+France,FRA,Europe,1990
+Germany,DEU,Europe,1990
+Greece,GRC,Europe,1990
+Hungary,HUN,Europe,1991
+Iceland,ISL,Europe,1995
+Ireland,IRL,Europe,1990
+Italy,ITA,Europe,1990
+Kosovo,OWID_KOS,Europe,2008
+Latvia,LVA,Europe,1995
+Lithuania,LTU,Europe,1995
+Luxembourg,LUX,Europe,1990
+Malta,MLT,Europe,1990
+Moldova,MDA,Europe,1995
+Montenegro,MNE,Europe,1997
+Netherlands,NLD,Europe,1990
+North Macedonia,MKD,Europe,1990
+Norway,NOR,Europe,1990
+Poland,POL,Europe,1990
+Portugal,PRT,Europe,1990
+Romania,ROU,Europe,1990
+Russia,RUS,Europe,1990
+San Marino,SMR,Europe,1997
+Serbia,SRB,Europe,1995
+Slovakia,SVK,Europe,1992
+Slovenia,SVN,Europe,1995
+Spain,ESP,Europe,1990
+Sweden,SWE,Europe,1990
+Switzerland,CHE,Europe,1990
+Ukraine,UKR,Europe,1990
+United Kingdom,GBR,Europe,1990
+Antigua and Barbuda,ATG,North America,1990
+Aruba,ABW,North America,1990
+Bahamas,BHS,North America,1990
+Barbados,BRB,North America,1990
+Belize,BLZ,North America,1990
+Bermuda,BMU,North America,1990
+Canada,CAN,North America,1997
+Cayman Islands,CYM,North America,2006
+Costa Rica,CRI,North America,1990
+Curacao,CUW,North America,2000
+Dominica,DMA,North America,1990
+Dominican Republic,DOM,North America,1990
+El Salvador,SLV,North America,1990
+Grenada,GRD,North America,1990
+Guatemala,GTM,North America,1990
+Haiti,HTI,North America,1990
+Honduras,HND,North America,1990
+Jamaica,JAM,North America,1990
+Mexico,MEX,North America,1990
+Nicaragua,NIC,North America,1990
+Panama,PAN,North America,1990
+Puerto Rico,PRI,North America,1990
+Saint Kitts and Nevis,KNA,North America,1990
+Saint Lucia,LCA,North America,1990
+Saint Vincent and the Grenadines,VCT,North America,1990
+Sint Maarten (Dutch part),SXM,North America,2009
+Trinidad and Tobago,TTO,North America,1990
+Turks and Caicos Islands,TCA,North America,2011
+United States,USA,North America,1990
+Australia,AUS,Oceania,1990
+Fiji,FJI,Oceania,1990
+Kiribati,KIR,Oceania,1990
+Marshall Islands,MHL,Oceania,1990
+Micronesia (country),FSM,Oceania,1990
+Nauru,NRU,Oceania,2004
+New Zealand,NZL,Oceania,1990
+Palau,PLW,Oceania,2000
+Papua New Guinea,PNG,Oceania,1990
+Samoa,WSM,Oceania,1990
+Solomon Islands,SLB,Oceania,1990
+Tonga,TON,Oceania,1990
+Tuvalu,TUV,Oceania,1990
+Vanuatu,VUT,Oceania,1990
+Argentina,ARG,South America,1990
+Bolivia,BOL,South America,1990
+Brazil,BRA,South America,1990
+Chile,CHL,South America,1990
+Colombia,COL,South America,1990
+Ecuador,ECU,South America,1990
+Guyana,GUY,South America,1990
+Paraguay,PRY,South America,1990
+Peru,PER,South America,1990
+Suriname,SUR,South America,1990
+Uruguay,URY,South America,1990

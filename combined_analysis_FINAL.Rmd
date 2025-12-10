@@ -1,0 +1,1152 @@
+---
+title: "Comprehensive Analysis: Youth Employment, GDP Growth, and SDG 8 Targets"
+author: "Data Science Project"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    latex_engine: xelatex
+    keep_tex: false
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: cosmo
+    highlight: tango
+geometry: "left=0.5in,right=0.5in,top=1in,bottom=1in"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 7.5,      # Reduced from 12 for PDF compatibility
+  fig.height = 5,       # Reduced from 7 for PDF compatibility  
+  out.width = "100%",   # Scale to fit page width
+  fig.align = "center", # Center figures
+  dpi = 300
+)
+
+# Create output directories if they don't exist
+dir.create("output/figures", recursive = TRUE, showWarnings = FALSE)
+dir.create("output/data", recursive = TRUE, showWarnings = FALSE)
+```
+
+# 1. Introduction
+
+This analysis explores global economic growth patterns and youth employment challenges through multiple lenses:
+
+- **Continental GDP per capita growth** using rolling CAGR analysis
+- **LDC performance** against SDG 8.1 (7% GDP growth target)
+- **COVID-19 impact** on LDC growth assessments
+- **Youth NEET rates** (Not in Education, Employment, or Training) across continents
+
+The analysis uses data from the World Bank, UN Population Division, and Our World in Data.
+
+## Data Requirements
+
+The following CSV files should be present in your working directory:
+
+1. `continents-according-to-our-world-in-data.csv` - Country-continent classifications
+2. `gdp-per-capita-worldbank.csv` - GDP per capita data (PPP, constant 2017 international $)
+3. `youth-not-in-education-employment-training.csv` - NEET rates by country and year
+4. `processed_population_un_countries.csv` - UN population data (processed format)
+5. `processed_population_un_countries_wide.csv` - UN population data (wide format, optional)
+
+---
+
+# 2. Setup and Data Loading
+
+## 2.1 Load Required Libraries
+
+```{r libraries}
+# Data manipulation and visualization
+library(tidyverse)
+library(ggplot2)
+library(scales)
+library(dplyr)
+library(stringr)
+library(janitor)
+```
+
+## 2.2 Load Core Datasets
+
+All CSV files are assumed to be in the current working directory.
+
+```{r load-data}
+# Load continent classifications
+continents <- read_csv("continents-according-to-our-world-in-data.csv") %>%
+  clean_names() %>% 
+  rename(country = entity, iso3 = code, continent = continent) %>%
+  filter(continent != "Antarctica")
+
+# Load GDP per capita data
+gdp_pc <- read_csv("gdp-per-capita-worldbank.csv") %>%
+  clean_names() %>%
+  rename(
+    country = entity, 
+    iso3 = code, 
+    year = year,
+    gdp_pc_ppp_2017usd = gdp_per_capita_ppp_constant_2017_international
+  ) %>%
+  mutate(year = as.integer(year))
+
+# Alternative name for compatibility with other analyses
+gdp <- gdp_pc %>%
+  rename(GDP_per_capita = gdp_pc_ppp_2017usd)
+
+# Load NEET data
+neet <- read_csv("youth-not-in-education-employment-training.csv") %>%
+  clean_names() %>%
+  rename(
+    country = entity, 
+    iso3 = code, 
+    year = year,
+    neet_pct = share_of_youth_not_in_education_employment_or_training_total_percent_of_youth_population
+  ) %>%
+  mutate(year = as.integer(year))
+
+# Load processed UN population data
+population <- read_csv("processed_population_un_countries.csv")
+
+# Extract total population by country and year
+clean_pop <- population %>%
+  select(CountryName, Year, TotalPopulation) %>%
+  distinct() %>%
+  rename(country = CountryName, population = TotalPopulation, year = Year)
+
+# Create ISO3 mapping from continents dataset
+iso3_mapping <- continents %>%
+  select(country, iso3) %>%
+  distinct()
+
+# Add ISO3 codes to population data
+clean_pop <- clean_pop %>%
+  left_join(iso3_mapping, by = "country") %>%
+  filter(!is.na(iso3)) %>%
+  mutate(year = as.integer(year))
+
+# Extract youth population (ages 15-24) for weighting
+clean_pop_by_age <- population %>%
+  filter(AgeGroup %in% c("15-19", "20-24")) %>%
+  group_by(CountryName, Year) %>%
+  summarise(
+    population_15_24 = sum(Population, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  rename(country = CountryName, year = Year) %>%
+  left_join(iso3_mapping, by = "country") %>%
+  filter(!is.na(iso3)) %>%
+  mutate(year = as.integer(year))
+
+# Also create population summary for continental analysis
+population_summary <- population %>%
+  select(CountryName, Year, TotalPopulation) %>%
+  distinct() %>%
+  rename(Entity = CountryName)
+
+cat("✓ Data loaded successfully\n")
+cat("  - Continents:", n_distinct(continents$iso3), "countries\n")
+cat("  - GDP data:", nrow(gdp_pc), "observations\n")
+cat("  - NEET data:", nrow(neet), "observations\n")
+cat("  - Population data (total):", n_distinct(clean_pop$iso3), "countries\n")
+cat("  - Population data (youth 15-24):", n_distinct(clean_pop_by_age$iso3), "countries\n")
+```
+
+## 2.3 Define LDC Classification
+
+The United Nations designates countries as Least Developed Countries (LDCs) based on criteria including low per capita income, human resource weakness, and economic vulnerability.
+
+```{r ldc-codes}
+# Official UN LDC list (44 countries as of December 2024)
+# Note: São Tomé and Príncipe (STP) graduated in 2024
+ldc_codes <- c(
+  # Africa (32)
+  "AGO", "BEN", "BFA", "BDI", "CAF", "TCD", "COM", "COD", "DJI", "ERI",
+  "ETH", "GMB", "GIN", "GNB", "LSO", "LBR", "MDG", "MWI", "MLI", "MRT",
+  "MOZ", "NER", "RWA", "SEN", "SLE", "SOM", "SSD", "SDN", "TGO", "UGA",
+  "TZA", "ZMB",
+  # Asia (8)
+  "AFG", "BGD", "KHM", "LAO", "MMR", "NPL", "TLS", "YEM",
+  # Caribbean (1)
+  "HTI",
+  # Pacific (3)
+  "KIR", "SLB", "TUV"
+)
+
+cat("✓ LDC classification defined:", length(ldc_codes), "countries\n")
+```
+
+---
+
+# 3. Results and Analysis
+
+## 3.1 Continental GDP Per Capita Growth Analysis
+
+This section presents rolling Compound Annual Growth Rate (CAGR) analysis from 1990-2023, showing how each continent's growth trajectory evolved through the SDG period (2015-2023).
+
+### 3.1.1 Prepare Continental Data
+
+```{r continental-prep}
+# Merge GDP with continents
+gdp_continents <- gdp %>%
+  left_join(continents %>% select(iso3, continent), by = "iso3") %>%
+  filter(continent != "Antarctica", !is.na(continent)) %>%
+  filter(year >= 1990, year <= 2023)
+
+# Merge with population data
+gdp_complete <- gdp_continents %>%
+  left_join(population_summary, by = c("country" = "Entity", "year" = "Year"))
+
+cat("✓ Continental data prepared\n")
+cat("  - Observations:", nrow(gdp_complete), "\n")
+cat("  - Countries with population data:", 
+    round(sum(!is.na(gdp_complete$TotalPopulation)) / nrow(gdp_complete) * 100, 1), "%\n")
+```
+
+### 3.1.2 Calculate Rolling CAGR
+
+Rolling CAGR measures cumulative growth from each country's earliest available data point to each subsequent year.
+
+```{r rolling-cagr}
+rolling_cagr <- gdp_complete %>%
+  group_by(country, iso3, continent) %>%
+  arrange(year) %>%
+  mutate(
+    # Baseline is the earliest year with data
+    Baseline_Year = first(year),
+    Baseline_GDP = first(GDP_per_capita),
+    Years_Since_Baseline = year - Baseline_Year,
+    # Calculate CAGR: ((GDP_current / GDP_baseline)^(1/years)) - 1
+    Rolling_CAGR = if_else(
+      Years_Since_Baseline > 0 & !is.na(Baseline_GDP),
+      ((GDP_per_capita / Baseline_GDP)^(1/Years_Since_Baseline) - 1) * 100,
+      NA_real_
+    )
+  ) %>%
+  ungroup() %>%
+  filter(!is.na(Rolling_CAGR))
+
+cat("✓ Rolling CAGR calculated for", n_distinct(rolling_cagr$country), "countries\n")
+```
+
+### 3.1.3 Calculate Continental Averages
+
+```{r continental-cagr-averages}
+# Simple average (unweighted)
+simple_avg <- rolling_cagr %>%
+  group_by(continent, year) %>%
+  summarise(
+    Avg_CAGR = mean(Rolling_CAGR, na.rm = TRUE),
+    N_Countries = n(),
+    .groups = "drop"
+  )
+
+# Weighted average (by population)
+weighted_avg <- rolling_cagr %>%
+  filter(!is.na(TotalPopulation)) %>%
+  group_by(continent, year) %>%
+  summarise(
+    Total_Continent_Pop = sum(TotalPopulation, na.rm = TRUE),
+    Weighted_CAGR = sum(Rolling_CAGR * TotalPopulation, na.rm = TRUE) / Total_Continent_Pop,
+    N_Countries_With_Pop = n(),
+    .groups = "drop"
+  )
+
+cat("✓ Continental CAGR averages calculated\n")
+```
+
+### 3.1.4 Visualize Rolling CAGR: Simple Average
+
+```{r rolling-cagr-simple, fig.height=5.5}
+# Plot: Simple Average
+plot_simple <- ggplot(simple_avg, aes(x = year, y = Avg_CAGR, color = continent, group = continent)) +
+  annotate("rect", xmin = 2015, xmax = 2023, ymin = -Inf, ymax = Inf,
+           fill = "gray90", alpha = 0.5) +
+  geom_vline(xintercept = 2015, linetype = "dashed", color = "black", linewidth = 0.8) +
+  annotate("text", x = 2015, y = Inf, label = "UN SDG 8\nAdopted", 
+           vjust = 1.2, hjust = -0.1, size = 3.5, fontface = "bold") +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "gray40") +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 0.8) +
+  scale_x_continuous(breaks = seq(1990, 2023, 5), limits = c(1990, 2023)) +
+  scale_y_continuous(labels = percent_format(scale = 1)) +
+  scale_color_brewer(palette = "Set2") +
+  labs(
+    title = "Continental GDP Per Capita Growth (Simple Average)",
+    subtitle = "Rolling CAGR from each country's earliest available baseline (1990-2023)",
+    x = "Year",
+    y = "Rolling CAGR (%)",
+    color = "Continent",
+    caption = "Simple average of all countries. Shaded region indicates SDG period (2015-2023)."
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "right")
+print(plot_simple)
+ggsave("output/figures/continental_rolling_cagr_simple.png", plot_simple, width = 12, height = 7)
+```
+
+### 3.1.5 Visualize Rolling CAGR: Weighted Average
+
+```{r rolling-cagr-weighted, fig.height=5.5}
+# Plot: Weighted Average
+plot_weighted <- ggplot(weighted_avg, aes(x = year, y = Weighted_CAGR, color = continent, group = continent)) +
+  annotate("rect", xmin = 2015, xmax = 2023, ymin = -Inf, ymax = Inf,
+           fill = "gray90", alpha = 0.5) +
+  geom_vline(xintercept = 2015, linetype = "dashed", color = "black", linewidth = 0.8) +
+  annotate("text", x = 2015, y = Inf, label = "UN SDG 8\nAdopted", 
+           vjust = 1.2, hjust = -0.1, size = 3.5, fontface = "bold") +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "gray40") +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 0.8) +
+  scale_x_continuous(breaks = seq(1990, 2023, 5), limits = c(1990, 2023)) +
+  scale_y_continuous(labels = percent_format(scale = 1)) +
+  scale_color_brewer(palette = "Set2") +
+  labs(
+    title = "Continental GDP Per Capita Growth (Population-Weighted)",
+    subtitle = "Rolling CAGR from earliest baseline, weighted by population (1990-2023)",
+    x = "Year",
+    y = "Rolling CAGR (%)",
+    color = "Continent",
+    caption = "Weighted by population: larger countries have more influence. Shaded region = SDG period."
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "right")
+print(plot_weighted)
+ggsave("output/figures/continental_rolling_cagr_weighted.png", plot_weighted, width = 12, height = 7)
+```
+
+---
+
+## 3.2 LDC Performance Against SDG 8.1 (7% GDP Growth Target)
+
+**SDG 8.1** aims to sustain per capita economic growth in accordance with national circumstances and, in particular, at least 7 percent gross domestic product growth per annum in the least developed countries.
+
+### 3.2.1 Prepare LDC-Specific Data
+
+```{r ldc-preparation}
+# Merge GDP with continent information and add LDC status
+gdp_analysis <- gdp %>%
+  left_join(continents %>% select(iso3, continent), by = "iso3") %>%
+  filter(continent != "Antarctica", !is.na(continent)) %>%
+  mutate(LDC_Status = ifelse(iso3 %in% ldc_codes, "LDC", "Non-LDC"))
+
+# Filter for SDG period (2015-2023)
+sdg_data <- gdp_analysis %>%
+  filter(year >= 2015, year <= 2023)
+
+cat("✓ LDC data prepared\n")
+cat("  - Total LDCs in dataset:", sum(gdp_analysis$LDC_Status == "LDC" & gdp_analysis$year == 2023), "\n")
+```
+
+### 3.2.2 Calculate CAGR for LDCs
+
+Compound Annual Growth Rate (CAGR) provides a smoothed annual growth rate over the entire period, removing year-to-year volatility.
+
+```{r ldc-cagr}
+# Calculate CAGR for each LDC during SDG period
+gdp_cagr <- sdg_data %>%
+  filter(LDC_Status == "LDC") %>%
+  group_by(country, iso3, continent) %>%
+  arrange(year) %>%
+  filter(n() >= 3) %>%  # Need at least 3 years of data
+  summarise(
+    Start_Year = first(year),
+    End_Year = last(year),
+    Start_GDP = first(GDP_per_capita),
+    End_GDP = last(GDP_per_capita),
+    Years_Span = End_Year - Start_Year,
+    CAGR = ((End_GDP / Start_GDP)^(1/Years_Span) - 1) * 100,
+    Achieved_Target = CAGR >= 7,
+    .groups = "drop"
+  )
+
+# Summary statistics
+achievement_summary <- gdp_cagr %>%
+  summarise(
+    Total_LDCs = n(),
+    LDCs_Above_7 = sum(Achieved_Target),
+    LDCs_Below_7 = sum(!Achieved_Target),
+    Percent_Above_7 = (LDCs_Above_7 / Total_LDCs) * 100,
+    Mean_CAGR = mean(CAGR),
+    Median_CAGR = median(CAGR)
+  )
+
+print(achievement_summary)
+```
+
+### 3.2.3 Visualizations: LDC Performance
+
+```{r ldc-plots, fig.height=6}
+# Plot 1: Overall Achievement
+achievement_data <- data.frame(
+  Category = c("Achieved 7%+", "Below 7%"),
+  Count = c(achievement_summary$LDCs_Above_7, achievement_summary$LDCs_Below_7),
+  Percentage = c(achievement_summary$Percent_Above_7, 100 - achievement_summary$Percent_Above_7)
+)
+
+plot1 <- ggplot(achievement_data, aes(x = Category, y = Count, fill = Category)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label = paste0(Count, "\n(", round(Percentage, 1), "%)")),
+            vjust = -0.5, size = 5, fontface = "bold") +
+  scale_fill_manual(values = c("Achieved 7%+" = "#2ecc71", "Below 7%" = "#e74c3c")) +
+  labs(
+    title = "Did LDCs Achieve 7% GDP Growth Target?",
+    subtitle = paste0("Analysis of ", achievement_summary$Total_LDCs, " LDCs with sufficient data (2015-2023)"),
+    x = NULL,
+    y = "Number of Countries",
+    caption = "Source: World Bank GDP data, UN LDC Classification\nTarget: SDG 8.1"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none") +
+  ylim(0, max(achievement_data$Count) * 1.2)
+print(plot1)
+ggsave("output/figures/ldc_achievement_overview.png", plot1, width = 10, height = 6)
+
+# Plot 2: Achievement by Continent
+achievement_by_continent <- gdp_cagr %>%
+  group_by(continent) %>%
+  summarise(
+    Total_LDCs = n(),
+    Achieved = sum(Achieved_Target),
+    Not_Achieved = sum(!Achieved_Target),
+    Percent_Achieved = (Achieved / Total_LDCs) * 100,
+    .groups = "drop"
+  )
+
+continent_data_long <- achievement_by_continent %>%
+  pivot_longer(
+    cols = c(Achieved, Not_Achieved),
+    names_to = "Status",
+    values_to = "Count"
+  ) %>%
+  mutate(
+    Status = factor(Status, levels = c("Achieved", "Not_Achieved"),
+                    labels = c("Achieved 7%+", "Below 7%"))
+  )
+
+plot2 <- ggplot(continent_data_long, aes(x = reorder(continent, -Percent_Achieved), 
+                                         y = Count, fill = Status)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(data = achievement_by_continent,
+            aes(x = continent, y = Total_LDCs, label = paste0(round(Percent_Achieved, 0), "%")),
+            vjust = -0.5, size = 4, fontface = "bold", inherit.aes = FALSE) +
+  scale_fill_manual(values = c("Achieved 7%+" = "#2ecc71", "Below 7%" = "#e74c3c")) +
+  labs(
+    title = "LDC Achievement of 7% GDP Growth Target by Continent",
+    subtitle = "Percentage labels show proportion achieving target (2015-2023)",
+    x = "Continent",
+    y = "Number of LDCs",
+    fill = "Target Status"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom")
+print(plot2)
+ggsave("output/figures/ldc_achievement_by_continent.png", plot2, width = 12, height = 7)
+
+# Plot 3: Growth Distribution
+plot3 <- ggplot(gdp_cagr, aes(x = CAGR)) +
+  geom_histogram(aes(fill = Achieved_Target), bins = 30, alpha = 0.8) +
+  geom_vline(xintercept = 7, linetype = "dashed", color = "red", linewidth = 1.2) +
+  annotate("text", x = 7, y = Inf, label = "7% Target", 
+           vjust = 1.2, color = "red", fontface = "bold") +
+  scale_fill_manual(
+    values = c("TRUE" = "#2ecc71", "FALSE" = "#e74c3c"),
+    labels = c("Achieved", "Not Achieved")
+  ) +
+  labs(
+    title = "Distribution of GDP Growth Rates Among LDCs",
+    subtitle = "Compound Annual Growth Rate (CAGR) 2015-2023",
+    x = "GDP Growth Rate (%)",
+    y = "Number of LDCs",
+    fill = "Target Achievement"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom")
+print(plot3)
+ggsave("output/figures/ldc_growth_distribution.png", plot3, width = 10, height = 6)
+
+# Plot 4: Top and Bottom Performers
+top_bottom_ldcs <- bind_rows(
+  gdp_cagr %>% arrange(desc(CAGR)) %>% head(10) %>% mutate(Group = "Top 10"),
+  gdp_cagr %>% arrange(CAGR) %>% head(10) %>% mutate(Group = "Bottom 10")
+) %>%
+  mutate(
+    country = factor(country, levels = country[order(CAGR)]),
+    Group = factor(Group, levels = c("Top 10", "Bottom 10"))
+  )
+
+vline_data <- data.frame(
+  xintercept = 7,
+  Group = factor("Top 10", levels = c("Top 10", "Bottom 10"))
+)
+
+label_data <- data.frame(
+  CAGR = 7,
+  country = levels(top_bottom_ldcs$country)[5],  # Middle position
+  Group = factor("Top 10", levels = c("Top 10", "Bottom 10")),
+  label = "7% Target"
+)
+
+plot4 <- ggplot(top_bottom_ldcs, aes(x = CAGR, y = country, fill = Achieved_Target)) +
+  geom_col() +
+  geom_vline(data = vline_data, aes(xintercept = xintercept), 
+             linetype = "dashed", color = "red", linewidth = 0.7) +
+  geom_text(data = label_data, 
+            aes(x = CAGR, y = country, label = label),
+            vjust = 1.5, color = "red", fontface = "bold", size = 3.5,
+            inherit.aes = FALSE) +
+  scale_fill_manual(
+    values = c("TRUE" = "#2ecc71", "FALSE" = "#e74c3c"),
+    labels = c("Achieved", "Not Achieved")
+  ) +
+  facet_wrap(~Group, scales = "free_y", ncol = 1) +
+  labs(
+    title = "Best and Worst Performing LDCs",
+    subtitle = "GDP Growth Rate (CAGR) 2015-2023",
+    x = "Compound Annual Growth Rate (%)",
+    y = NULL,
+    fill = "Target Achievement"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold", size = 12)
+  )
+print(plot4)
+ggsave("output/figures/ldc_top_bottom_performers.png", plot4, width = 12, height = 10)
+```
+
+---
+
+### 3.2.4 COVID-19 Impact on LDC Growth Assessments
+
+To assess how the pandemic affected growth assessments, we compare two periods:
+- **2015-2023 (with COVID)**: Includes pandemic disruption
+- **2010-2023 (excluding COVID years 2020-2022)**: Isolates structural growth
+
+#### Calculate CAGR Without COVID Years
+
+```{r covid-analysis}
+# Filter data excluding COVID years
+extended_data_no_covid <- gdp_analysis %>%
+  filter(
+    year >= 2010, 
+    year <= 2023,
+    !year %in% c(2020, 2021, 2022)  # EXCLUDE COVID years
+  )
+
+# Calculate CAGR for LDCs in extended period (no COVID)
+gdp_cagr_extended <- extended_data_no_covid %>%
+  filter(LDC_Status == "LDC") %>%
+  group_by(country, iso3, continent) %>%
+  arrange(year) %>%
+  filter(n() >= 5) %>%  # Need at least 5 years
+  summarise(
+    Start_Year = first(year),
+    End_Year = last(year),
+    Start_GDP = first(GDP_per_capita),
+    End_GDP = last(GDP_per_capita),
+    Years_Span = End_Year - Start_Year,
+    Data_Points = n(),
+    CAGR = ((End_GDP / Start_GDP)^(1/Years_Span) - 1) * 100,
+    Achieved_Target = CAGR >= 7,
+    .groups = "drop"
+  )
+
+cat("✓ Extended period analysis (2010-2023, no COVID):", nrow(gdp_cagr_extended), "LDCs\n")
+```
+
+#### Compare Periods
+
+```{r covid-comparison}
+# Calculate CAGR for original period WITH COVID for comparison
+sdg_data_with_covid <- gdp_analysis %>%
+  filter(year >= 2015, year <= 2023, LDC_Status == "LDC") %>%
+  group_by(country, iso3, continent) %>%
+  arrange(year) %>%
+  filter(n() >= 3) %>%
+  summarise(
+    Start_Year = first(year),
+    End_Year = last(year),
+    Start_GDP = first(GDP_per_capita),
+    End_GDP = last(GDP_per_capita),
+    Years_Span = End_Year - Start_Year,
+    CAGR_with_COVID = ((End_GDP / Start_GDP)^(1/Years_Span) - 1) * 100,
+    .groups = "drop"
+  )
+
+# Merge for comparison
+comparison_data <- gdp_cagr_extended %>%
+  select(iso3, country, continent, CAGR_no_COVID = CAGR, Achieved_Target) %>%
+  inner_join(
+    sdg_data_with_covid %>% select(iso3, CAGR_with_COVID),
+    by = "iso3"
+  ) %>%
+  mutate(
+    CAGR_Difference = CAGR_no_COVID - CAGR_with_COVID,
+    Impact = case_when(
+      CAGR_Difference > 0.5 ~ "Improved without COVID",
+      CAGR_Difference < -0.5 ~ "Worse without COVID years",
+      TRUE ~ "Minimal difference"
+    )
+  )
+
+# Summary statistics
+achievement_summary_extended <- gdp_cagr_extended %>%
+  summarise(
+    Total_LDCs = n(),
+    LDCs_Above_7 = sum(Achieved_Target),
+    Percent_Above_7 = (LDCs_Above_7 / Total_LDCs) * 100,
+    Mean_CAGR = mean(CAGR)
+  )
+
+cat("\n=== COVID IMPACT SUMMARY ===\n")
+cat("With COVID (2015-2023):\n")
+cat("  - Mean CAGR:", round(mean(sdg_data_with_covid$CAGR_with_COVID), 2), "%\n")
+cat("  - % achieving 7%+:", 
+    round(sum(sdg_data_with_covid$CAGR_with_COVID >= 7) / nrow(sdg_data_with_covid) * 100, 1), "%\n")
+cat("\nWithout COVID (2010-2023, excl. 2020-2022):\n")
+cat("  - Mean CAGR:", round(achievement_summary_extended$Mean_CAGR, 2), "%\n")
+cat("  - % achieving 7%+:", round(achievement_summary_extended$Percent_Above_7, 1), "%\n")
+```
+
+#### Visualize COVID Impact
+
+```{r covid-plots, fig.height=6}
+# Plot 1: Overall comparison
+achievement_data_extended <- data.frame(
+  Category = c("Achieved 7%+", "Below 7%"),
+  Count = c(achievement_summary_extended$LDCs_Above_7, 
+            achievement_summary_extended$Total_LDCs - achievement_summary_extended$LDCs_Above_7),
+  Percentage = c(achievement_summary_extended$Percent_Above_7, 
+                 100 - achievement_summary_extended$Percent_Above_7)
+)
+
+plot1_extended <- ggplot(achievement_data_extended, aes(x = Category, y = Count, fill = Category)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label = paste0(Count, "\n(", round(Percentage, 1), "%)")),
+            vjust = -0.5, size = 5, fontface = "bold") +
+  scale_fill_manual(values = c("Achieved 7%+" = "#2ecc71", "Below 7%" = "#e74c3c")) +
+  labs(
+    title = "LDC Achievement of 7% GDP Growth Target",
+    subtitle = "Extended Analysis: 2010-2023 (excluding COVID years 2020-2022)",
+    x = NULL,
+    y = "Number of Countries",
+    caption = "COVID years excluded to isolate structural growth patterns"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none") +
+  ylim(0, max(achievement_data_extended$Count) * 1.2)
+print(plot1_extended)
+ggsave("output/figures/ldc_achievement_no_covid.png", plot1_extended, width = 10, height = 6)
+
+# Plot 2: Side-by-side comparison
+comparison_summary <- data.frame(
+  Period = c("2015-2023\n(With COVID)", "2010-2023\n(No COVID)"),
+  Mean_Growth = c(
+    mean(sdg_data_with_covid$CAGR_with_COVID, na.rm = TRUE),
+    mean(gdp_cagr_extended$CAGR, na.rm = TRUE)
+  ),
+  Percent_Above_7 = c(
+    sum(sdg_data_with_covid$CAGR_with_COVID >= 7) / nrow(sdg_data_with_covid) * 100,
+    achievement_summary_extended$Percent_Above_7
+  )
+)
+
+plot2_comparison <- ggplot(comparison_summary, aes(x = Period, y = Percent_Above_7, fill = Period)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label = paste0(round(Percent_Above_7, 1), "%")),
+            vjust = -0.5, size = 6, fontface = "bold") +
+  geom_text(aes(label = paste0("Avg: ", round(Mean_Growth, 2), "%")),
+            vjust = 1.5, size = 4, color = "white", fontface = "bold") +
+  scale_fill_manual(values = c("2015-2023\n(With COVID)" = "#e74c3c", 
+                               "2010-2023\n(No COVID)" = "#3498db")) +
+  labs(
+    title = "Impact of Excluding COVID Years on LDC Performance Assessment",
+    subtitle = "Comparison: % of LDCs achieving 7% growth target",
+    x = "Analysis Period",
+    y = "% of LDCs Achieving 7% Target"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none") +
+  ylim(0, 100)
+print(plot2_comparison)
+ggsave("output/figures/covid_impact_comparison.png", plot2_comparison, width = 10, height = 6)
+
+# Plot 3: Distribution comparison
+distribution_data <- bind_rows(
+  gdp_cagr_extended %>% mutate(Analysis = "2010-2023 (No COVID)"),
+  sdg_data_with_covid %>% 
+    mutate(CAGR = CAGR_with_COVID, Achieved_Target = CAGR >= 7, Analysis = "2015-2023 (With COVID)") %>%
+    select(country, iso3, CAGR, Achieved_Target, Analysis)
+)
+
+plot3_distribution <- ggplot(distribution_data, aes(x = CAGR, fill = Analysis)) +
+  geom_histogram(alpha = 0.6, bins = 25, position = "identity") +
+  geom_vline(xintercept = 7, linetype = "dashed", color = "red", linewidth = 1) +
+  annotate("text", x = 7, y = Inf, label = "7% Target", 
+           vjust = 1.5, color = "red", fontface = "bold", size = 4) +
+  scale_fill_manual(values = c("2015-2023 (With COVID)" = "#e74c3c", 
+                               "2010-2023 (No COVID)" = "#3498db")) +
+  labs(
+    title = "Growth Rate Distribution: Impact of COVID Year Exclusion",
+    subtitle = "Comparing CAGR distributions with and without COVID-affected years",
+    x = "Compound Annual Growth Rate (%)",
+    y = "Number of LDCs",
+    fill = "Analysis Period"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom")
+print(plot3_distribution)
+ggsave("output/figures/covid_distribution_comparison.png", plot3_distribution, width = 12, height = 7)
+
+# Plot 4: Country-level impacts
+top_5_positive <- comparison_data %>% arrange(desc(CAGR_Difference)) %>% head(5)
+top_5_negative <- comparison_data %>% arrange(CAGR_Difference) %>% head(5)
+
+most_affected <- bind_rows(top_5_positive, top_5_negative) %>%
+  mutate(country = factor(country, levels = country[order(CAGR_Difference)]))
+
+plot4_impact <- ggplot(most_affected, aes(x = CAGR_Difference, y = country, fill = Impact)) +
+  geom_col() +
+  geom_vline(xintercept = 0, linetype = "solid", color = "black", linewidth = 0.5) +
+  scale_fill_manual(values = c(
+    "Improved without COVID" = "#2ecc71",
+    "Worse without COVID years" = "#e74c3c",
+    "Minimal difference" = "#95a5a6"
+  )) +
+  labs(
+    title = "Country-Specific Impact of Excluding COVID Years",
+    subtitle = "Top 5 most positively and negatively impacted LDCs",
+    x = "Change in CAGR (percentage points)",
+    y = NULL,
+    fill = "Impact Category"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+print(plot4_impact)
+ggsave("output/figures/covid_country_impact.png", plot4_impact, width = 12, height = 8)
+```
+
+---
+
+### 3.2.5 Case Study: Timor-Leste (East Timor)
+
+Timor-Leste provides an interesting case study for understanding how COVID inclusion affects growth assessments.
+
+#### Extract and Analyze Timor-Leste Data
+
+```{r timor-analysis}
+# Extract Timor-Leste data
+timor_data <- gdp %>%
+  filter(iso3 == "TLS") %>%
+  arrange(year)
+
+# Calculate annual growth rates
+timor_analysis <- timor_data %>%
+  arrange(year) %>%
+  mutate(
+    Annual_Growth_Rate = (GDP_per_capita - lag(GDP_per_capita)) / lag(GDP_per_capita) * 100,
+    Period = case_when(
+      year %in% c(2020, 2021, 2022) ~ "COVID Years",
+      year >= 2015 & year <= 2019 ~ "Pre-COVID (2015-2019)",
+      year >= 2023 ~ "Post-COVID (2023+)",
+      year >= 2010 & year <= 2014 ~ "Pre-SDG (2010-2014)",
+      TRUE ~ "Other"
+    )
+  )
+
+# Calculate CAGR with and without COVID
+timor_with_covid <- timor_data %>%
+  filter(year >= 2015, year <= 2023) %>%
+  arrange(year) %>%
+  summarise(
+    Start_Year = first(year),
+    End_Year = last(year),
+    Start_GDP = first(GDP_per_capita),
+    End_GDP = last(GDP_per_capita),
+    Years_Span = End_Year - Start_Year,
+    CAGR = ((End_GDP / Start_GDP)^(1/Years_Span) - 1) * 100
+  )
+
+timor_no_covid <- timor_data %>%
+  filter(year >= 2010, year <= 2023, !year %in% c(2020, 2021, 2022)) %>%
+  arrange(year) %>%
+  summarise(
+    Start_Year = first(year),
+    End_Year = last(year),
+    Start_GDP = first(GDP_per_capita),
+    End_GDP = last(GDP_per_capita),
+    Years_Span = End_Year - Start_Year,
+    CAGR = ((End_GDP / Start_GDP)^(1/Years_Span) - 1) * 100
+  )
+
+cat("\n=== TIMOR-LESTE CAGR COMPARISON ===\n")
+cat("With COVID (2015-2023):", round(timor_with_covid$CAGR, 2), "%\n")
+cat("  Target achieved:", ifelse(timor_with_covid$CAGR >= 7, "YES ✓", "NO ✗"), "\n\n")
+cat("Without COVID (2010-2023, excl. 2020-2022):", round(timor_no_covid$CAGR, 2), "%\n")
+cat("  Target achieved:", ifelse(timor_no_covid$CAGR >= 7, "YES ✓", "NO ✗"), "\n\n")
+cat("Impact of COVID inclusion:", round(timor_with_covid$CAGR - timor_no_covid$CAGR, 2), "pp\n")
+```
+
+#### Visualize Timor-Leste Trajectory
+
+```{r timor-plots, fig.height=5.5}
+# Plot 1: GDP Trajectory
+plot1_timor <- ggplot(timor_analysis %>% filter(year >= 2010), 
+                      aes(x = year, y = GDP_per_capita, color = Period, group = 1)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  geom_vline(xintercept = 2020, linetype = "dashed", color = "red", alpha = 0.5) +
+  geom_vline(xintercept = 2022, linetype = "dashed", color = "red", alpha = 0.5) +
+  annotate("rect", xmin = 2019.5, xmax = 2022.5, ymin = -Inf, ymax = Inf, 
+           alpha = 0.1, fill = "red") +
+  annotate("text", x = 2021, y = Inf, label = "COVID\nYears", 
+           vjust = 1.5, color = "red", fontface = "bold", size = 3.5) +
+  scale_color_manual(values = c(
+    "Pre-SDG (2010-2014)" = "gray60",
+    "Pre-COVID (2015-2019)" = "#3498db",
+    "COVID Years" = "#e74c3c",
+    "Post-COVID (2023+)" = "#2ecc71"
+  )) +
+  labs(
+    title = "Timor-Leste GDP Per Capita Trajectory (2010-2023)",
+    subtitle = "Showing impact of COVID years on economic growth",
+    x = "Year",
+    y = "GDP per capita (2017 USD PPP)",
+    color = "Period",
+    caption = "Red shaded area indicates COVID-affected years (2020-2022)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom")
+print(plot1_timor)
+ggsave("output/figures/timor_gdp_trajectory.png", plot1_timor, width = 12, height = 7)
+
+# Plot 2: Annual Growth Rates
+plot2_timor <- ggplot(timor_analysis %>% filter(year >= 2010, !is.na(Annual_Growth_Rate)), 
+                      aes(x = year, y = Annual_Growth_Rate)) +
+  geom_col(aes(fill = Annual_Growth_Rate >= 7), width = 0.7) +
+  geom_hline(yintercept = 7, linetype = "dashed", color = "darkgreen", linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = "solid", color = "black", linewidth = 0.5) +
+  annotate("rect", xmin = 2019.5, xmax = 2022.5, ymin = -Inf, ymax = Inf, 
+           alpha = 0.1, fill = "red") +
+  annotate("text", x = 2021, y = Inf, label = "COVID", 
+           vjust = 1.5, color = "red", fontface = "bold") +
+  annotate("text", x = 2015, y = 7, label = "7% Target", 
+           vjust = -0.5, hjust = 0, color = "darkgreen", fontface = "bold", size = 3.5) +
+  scale_fill_manual(values = c("TRUE" = "#2ecc71", "FALSE" = "#e74c3c"),
+                    labels = c("Above 7%", "Below 7%")) +
+  labs(
+    title = "Timor-Leste Annual GDP Growth Rates (2010-2023)",
+    subtitle = "Year-by-year growth showing COVID impact",
+    x = "Year",
+    y = "Annual Growth Rate (%)",
+    fill = "Target Achievement",
+    caption = "Dashed line indicates 7% SDG target"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom")
+print(plot2_timor)
+ggsave("output/figures/timor_annual_growth.png", plot2_timor, width = 12, height = 7)
+```
+
+---
+
+## 3.3 Youth Employment: NEET Analysis
+
+This section analyzes youth Not in Education, Employment, or Training (NEET) rates across continents. Trend analysis covers 1990-2023, while change analysis focuses on 2015-2020.
+
+### 3.3.1 Prepare NEET Panel Data
+
+```{r neet-panel}
+# Create base reference with continent information
+base <- continents %>% select(country, iso3, continent)
+
+# Join NEET data with continent info
+neet2 <- neet %>% inner_join(base, by = c("iso3", "country"))
+
+# Create full NEET panel dataset for trends (1990-2023)
+neet_panel_full <- neet2 %>%
+  left_join(clean_pop_by_age %>% select(iso3, year, population_15_24), by = c("iso3", "year")) %>%
+  filter(year >= 1990, year <= 2023) %>%
+  arrange(country, year)
+
+# Create subset for change analysis (2015-2020)
+neet_panel_change <- neet_panel_full %>%
+  filter(year >= 2015, year <= 2020)
+
+cat("✓ NEET panel datasets created\n")
+cat("  - Full dataset (1990-2023):", nrow(neet_panel_full), "observations\n")
+cat("  - Change dataset (2015-2020):", nrow(neet_panel_change), "observations\n")
+```
+
+### 3.3.2 Calculate NEET Averages for Trends (1990-2023)
+
+```{r neet-averages-trends}
+# Simple mean (unweighted) - for trends
+neet_cont_mean_full <- neet_panel_full %>%
+  filter(!is.na(neet_pct)) %>%
+  group_by(continent, year) %>%
+  summarise(
+    neet_pct_mean = mean(neet_pct, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Weighted by youth population (15-24) - for trends
+neet_cont_weighted_full <- neet_panel_full %>%
+  filter(!is.na(neet_pct)) %>%
+  group_by(continent, year) %>%
+  summarise(
+    pop_with_neet = sum(population_15_24[!is.na(population_15_24)], na.rm = TRUE),
+    neet_pct_weighted = ifelse(
+      pop_with_neet > 0,
+      sum(population_15_24 * neet_pct, na.rm = TRUE) / pop_with_neet,
+      mean(neet_pct, na.rm = TRUE)  # Fallback to simple mean if no population data
+    ),
+    .groups = "drop"
+  ) %>%
+  select(-pop_with_neet)
+
+cat("✓ NEET trend averages calculated (1990-2023)\n")
+```
+
+### 3.3.3 Calculate NEET Averages for Change Analysis (2015-2020)
+
+```{r neet-averages-change}
+# Simple mean (unweighted) - for change analysis
+neet_cont_mean_change <- neet_panel_change %>%
+  filter(!is.na(neet_pct)) %>%
+  group_by(continent, year) %>%
+  summarise(
+    neet_pct_mean = mean(neet_pct, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Weighted by youth population (15-24) - for change analysis
+# More lenient filtering to ensure all continents appear
+neet_cont_weighted_change <- neet_panel_change %>%
+  filter(!is.na(neet_pct)) %>%
+  group_by(continent, year) %>%
+  summarise(
+    pop_with_neet = sum(population_15_24[!is.na(population_15_24)], na.rm = TRUE),
+    neet_pct_weighted = ifelse(
+      pop_with_neet > 0,
+      sum(population_15_24 * neet_pct, na.rm = TRUE) / pop_with_neet,
+      mean(neet_pct, na.rm = TRUE)  # Fallback to simple mean if no population data
+    ),
+    .groups = "drop"
+  ) %>%
+  select(-pop_with_neet)
+
+cat("✓ NEET change averages calculated (2015-2020)\n")
+cat("  - Simple mean rows:", nrow(neet_cont_mean_change), "\n")
+cat("  - Weighted rows:", nrow(neet_cont_weighted_change), "\n")
+```
+
+### 3.3.4 Visualize NEET Trends (1990-2023)
+
+### 3.3.4 Visualize NEET Trends (1990-2023)
+
+```{r neet-trend-plots, fig.height=6}
+# Simple Mean NEET Plot (1990-2023)
+p_m_neet_trend <- ggplot(neet_cont_mean_full, aes(x = year, y = neet_pct_mean, color = continent)) +
+  geom_line(size = 1) +
+  geom_point(size = 1.5) +
+  scale_x_continuous(breaks = seq(1990, 2023, 5)) +
+  labs(
+    title = "NEET (15–24) by Continent (Simple Average)",
+    subtitle = "Unweighted country means (1990-2023)",
+    x = "Year", 
+    y = "NEET (%)", 
+    color = "Continent"
+  ) +
+  theme_minimal(base_size = 13)
+print(p_m_neet_trend)
+ggsave("output/figures/neet_by_continent_simple_mean_trend.png", p_m_neet_trend, width = 10, height = 6)
+
+# Weighted NEET Plot (1990-2023)
+p_w_neet_trend <- ggplot(neet_cont_weighted_full, aes(x = year, y = neet_pct_weighted, color = continent)) +
+  geom_line(size = 1) +
+  geom_point(size = 1.5) +
+  scale_x_continuous(breaks = seq(1990, 2023, 5)) +
+  labs(
+    title = "NEET (15–24) by Continent (Weighted Average)",
+    subtitle = "Youth population-weighted averages (1990-2023)",
+    x = "Year", 
+    y = "NEET (%)", 
+    color = "Continent"
+  ) +
+  theme_minimal(base_size = 13)
+print(p_w_neet_trend)
+ggsave("output/figures/neet_by_continent_weighted_trend.png", p_w_neet_trend, width = 10, height = 6)
+```
+
+### 3.3.5 NEET Change Analysis (2015 → 2020)
+
+### 3.3.5 NEET Change Analysis (2015 → 2020)
+
+```{r neet-change}
+baseline_year <- 2015
+
+# Simple mean change (2015 → 2020)
+neet_2020_m <- neet_cont_mean_change %>% 
+  filter(year == 2020) %>% 
+  select(continent, neet_2020_m = neet_pct_mean)
+
+neet_base_m <- neet_cont_mean_change %>% 
+  filter(year == baseline_year) %>% 
+  select(continent, neet_base_m = neet_pct_mean)
+
+neet_change_m <- neet_2020_m %>%
+  left_join(neet_base_m, by = "continent") %>%
+  mutate(neet_change_pp_mean = neet_2020_m - neet_base_m)
+
+# Weighted change (2015 → 2020)
+neet_2020_w <- neet_cont_weighted_change %>% 
+  filter(year == 2020) %>% 
+  select(continent, neet_2020_w = neet_pct_weighted)
+
+neet_base_w <- neet_cont_weighted_change %>% 
+  filter(year == baseline_year) %>% 
+  select(continent, neet_base_w = neet_pct_weighted)
+
+neet_change_w <- neet_2020_w %>%
+  left_join(neet_base_w, by = "continent") %>%
+  mutate(neet_change_pp_weighted = neet_2020_w - neet_base_w)
+
+cat("✓ NEET change calculated (2015 → 2020)\n")
+cat("  - Simple mean continents:", nrow(neet_change_m), "\n")
+cat("  - Weighted continents:", nrow(neet_change_w), "\n")
+
+# Visualize simple mean change
+p_bar_m <- ggplot(neet_change_m, aes(x = continent, y = neet_change_pp_mean, fill = continent)) +
+  geom_col() +
+  geom_hline(yintercept = 0, color = "gray50") +
+  scale_y_continuous(labels = label_number(accuracy = 0.1, suffix = " pp")) +
+  labs(
+    title = paste0("ΔNEET (", baseline_year, " → 2020) by Continent — Simple Average"),
+    subtitle = "Unweighted mean across countries; negative values indicate improvement",
+    x = "Continent", 
+    y = "Change (percentage points)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+print(p_bar_m)
+ggsave("output/figures/neet_change_simple_mean_bar.png", p_bar_m, width = 9, height = 6)
+
+# Visualize weighted change
+p_bar_w <- ggplot(neet_change_w, aes(x = continent, y = neet_change_pp_weighted, fill = continent)) +
+  geom_col() +
+  geom_hline(yintercept = 0, color = "gray50") +
+  scale_y_continuous(labels = label_number(accuracy = 0.1, suffix = " pp")) +
+  labs(
+    title = paste0("Weighted ΔNEET (", baseline_year, " → 2020) by Continent"),
+    subtitle = "Weights: youth population (15–24); negative values indicate improvement",
+    x = "Continent", 
+    y = "Change (percentage points)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+print(p_bar_w)
+ggsave("output/figures/neet_change_weighted_bar.png", p_bar_w, width = 9, height = 6)
+```
+
+---
+
+# 4. Export Summary Data
+
+```{r export-data}
+# Export continental CAGR averages
+write_csv(simple_avg, "output/data/continental_cagr_simple.csv")
+write_csv(weighted_avg, "output/data/continental_cagr_weighted.csv")
+
+# Export LDC analysis
+write_csv(gdp_cagr, "output/data/ldc_cagr_results.csv")
+write_csv(achievement_by_continent, "output/data/ldc_achievement_by_continent.csv")
+
+# Export COVID comparison
+write_csv(gdp_cagr_extended, "output/data/ldc_cagr_no_covid.csv")
+write_csv(comparison_data, "output/data/covid_impact_comparison.csv")
+
+# Export Timor-Leste case study
+write_csv(timor_analysis %>% filter(year >= 2010), "output/data/timor_leste_analysis.csv")
+
+# Export NEET analysis - trends (1990-2023)
+write_csv(neet_cont_mean_full, "output/data/neet_continent_simple_trend_1990_2023.csv")
+write_csv(neet_cont_weighted_full, "output/data/neet_continent_weighted_trend_1990_2023.csv")
+
+# Export NEET analysis - change (2015-2020)
+write_csv(neet_change_m, "output/data/neet_change_simple_2015_2020.csv")
+write_csv(neet_change_w, "output/data/neet_change_weighted_2015_2020.csv")
+
+cat("\n✅ All data exported to output/data/ directory\n")
+```
+
+---
+
+# 5. Summary and Conclusions
+
+## 5.1 Key Findings
+
+```{r summary-stats}
+cat("\n", strrep("=", 80), "\n")
+cat("COMPREHENSIVE ANALYSIS SUMMARY\n")
+cat(strrep("=", 80), "\n\n")
+
+cat("1. CONTINENTAL GDP GROWTH (ROLLING CAGR)\n")
+cat("   - Period: 1990-2023\n")
+cat("   - All continents show positive long-term growth\n")
+cat("   - Weighted vs. simple averages reveal influence of large countries\n\n")
+
+cat("2. LDC ACHIEVEMENT OF 7% TARGET (SDG 8.1)\n")
+cat("   - Period: 2015-2023\n")
+cat("   - LDCs achieving target:", achievement_summary$LDCs_Above_7, "of", achievement_summary$Total_LDCs,
+    sprintf("(%.1f%%)\n", achievement_summary$Percent_Above_7))
+cat("   - Mean CAGR:", round(achievement_summary$Mean_CAGR, 2), "%\n")
+cat("   - Median CAGR:", round(achievement_summary$Median_CAGR, 2), "%\n\n")
+
+cat("3. COVID-19 IMPACT ON LDC ASSESSMENT\n")
+cat("   - Excluding COVID years changes assessment significantly\n")
+cat("   - Extended period (2010-2023, no COVID):\n")
+cat("     • Mean CAGR:", round(achievement_summary_extended$Mean_CAGR, 2), "%\n")
+cat("     • % achieving target:", round(achievement_summary_extended$Percent_Above_7, 1), "%\n\n")
+
+cat("4. YOUTH EMPLOYMENT (NEET)\n")
+cat("   - Trend analysis: 1990-2023\n")
+cat("   - Change analysis: 2015 → 2020\n")
+cat("   - NEET rates vary significantly by continent\n")
+cat("   - Youth population weighting reveals different patterns\n\n")
+
+cat(strrep("=", 80), "\n")
+cat("📊 Analysis complete! All visualizations and data files have been saved.\n")
+cat(strrep("=", 80), "\n")
+```
+
+## 5.2 Methodological Notes
+
+**CAGR Calculation**: Compound Annual Growth Rate smooths year-to-year volatility, providing a more stable measure of long-term growth.
+
+**Population Weighting**: Larger countries have greater influence on weighted averages, reflecting their proportional impact on continental economies and populations.
+
+**COVID Exclusion**: Removing 2020-2022 isolates structural growth patterns from pandemic disruption, though this may miss important recovery dynamics.
+
+**NEET Analysis Periods**: 
+- Trend analysis (1990-2023) shows long-term youth employment patterns
+- Change analysis (2015-2020) focuses on pre-COVID period starting from SDG adoption
+
+**Data Limitations**: 
+- Not all countries have complete data coverage
+- LDC classifications may change over time
+- Population data availability varies by country
+
+---
+
+# Session Information
+
+```{r session-info}
+sessionInfo()
+```
